@@ -6,34 +6,58 @@ import { PrismaAdapter } from "@next-auth/prisma-adapter"
 import { prisma } from "@/lib/prisma"
 import bcrypt from "bcryptjs"
 
+// 🔹 ประกาศขยาย Type ของ NextAuth ให้รองรับ id และ role
+declare module "next-auth" {
+  interface Session {
+    user: {
+      id: string
+      role: string
+      name?: string | null
+      email?: string | null
+      image?: string | null
+    }
+  }
+
+  interface User {
+    role?: string
+  }
+}
+
+declare module "next-auth/jwt" {
+  interface JWT {
+    id?: string
+    role?: string
+  }
+}
+
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma),
   session: {
-    strategy: "jwt"
+    strategy: "jwt",
   },
   providers: [
     GoogleProvider({
-      clientId: process.env.GOOGLE_CLIENT_ID || "demo-google-id",
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET || "demo-google-secret",
+      clientId: process.env.GOOGLE_CLIENT_ID || "",
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET || "",
       allowDangerousEmailAccountLinking: true,
       authorization: {
         params: {
           prompt: "consent",
           access_type: "offline",
-          response_type: "code"
-        }
-      }
+          response_type: "code",
+        },
+      },
     }),
     GitHubProvider({
-      clientId: process.env.GITHUB_ID || "demo-github-id",
-      clientSecret: process.env.GITHUB_SECRET || "demo-github-secret",
-      allowDangerousEmailAccountLinking: true
+      clientId: process.env.GITHUB_CLIENT_ID || "",
+      clientSecret: process.env.GITHUB_CLIENT_SECRET || "",
+      allowDangerousEmailAccountLinking: true,
     }),
     CredentialsProvider({
       name: "Credentials",
       credentials: {
         email: { label: "Email", type: "email" },
-        password: { label: "Password", type: "password" }
+        password: { label: "Password", type: "password" },
       },
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) {
@@ -42,7 +66,7 @@ export const authOptions: NextAuthOptions = {
 
         const cleanEmail = credentials.email.toLowerCase().trim()
         const user = await prisma.user.findUnique({
-          where: { email: cleanEmail }
+          where: { email: cleanEmail },
         })
 
         if (!user || !user.password) {
@@ -56,19 +80,20 @@ export const authOptions: NextAuthOptions = {
 
         return {
           id: user.id,
-          name: user.name || user.email.split('@')[0],
+          name: user.name || user.email.split("@")[0],
           email: user.email,
-          role: user.role || "USER"
+          role: user.role || "USER",
         }
-      }
-    })
+      },
+    }),
   ],
   callbacks: {
     async jwt({ token, user, trigger, session }) {
       if (user) {
         token.id = user.id
-        // fetch role from DB
-        const dbUser = await prisma.user.findUnique({ where: { id: user.id } })
+        const dbUser = await prisma.user.findUnique({
+          where: { id: user.id },
+        })
         token.role = dbUser?.role || "USER"
         token.name = dbUser?.name || user.name
       }
@@ -84,32 +109,36 @@ export const authOptions: NextAuthOptions = {
         session.user.name = token.name as string
       }
       return session
-    }
+    },
   },
   events: {
     async createUser({ user }) {
-      // Seed default categories for social login new users
       const categories = [
-        { name: '🍔 อาหารและเครื่องดื่ม', type: 'EXPENSE' },
-        { name: '🚗 การเดินทาง', type: 'EXPENSE' },
-        { name: '🛍️ ช้อปปิ้ง', type: 'EXPENSE' },
-        { name: '💡 ค่าน้ำค่าน้ำไฟ', type: 'EXPENSE' },
-        { name: '🏠 ที่พักอาศัย', type: 'EXPENSE' },
-        { name: '🎬 บันเทิง', type: 'EXPENSE' },
-        { name: '💰 เงินเดือน', type: 'INCOME' },
-        { name: '💻 งานฟรีแลนซ์', type: 'INCOME' },
-        { name: '🎁 โบนัส/ของขวัญ', type: 'INCOME' }
+        { name: "🍔 อาหารและเครื่องดื่ม", type: "EXPENSE" },
+        { name: "🚗 การเดินทาง", type: "EXPENSE" },
+        { name: "🛍️ ช้อปปิ้ง", type: "EXPENSE" },
+        { name: "💡 ค่าน้ำค่าไฟ", type: "EXPENSE" },
+        { name: "🏠 ที่พักอาศัย", type: "EXPENSE" },
+        { name: "🎬 บันเทิง", type: "EXPENSE" },
+        { name: "💰 เงินเดือน", type: "INCOME" },
+        { name: "💻 งานฟรีแลนซ์", type: "INCOME" },
+        { name: "🎁 โบนัส/ของขวัญ", type: "INCOME" },
       ]
+
       for (const cat of categories) {
         await prisma.category.create({
-          data: { name: cat.name, type: cat.type, userId: user.id }
+          data: {
+            name: cat.name,
+            type: cat.type,
+            userId: user.id,
+          },
         })
       }
-    }
+    },
   },
   pages: {
-    signIn: '/login',
-    error: '/login'
+    signIn: "/login",
+    error: "/login",
   },
-  secret: process.env.NEXTAUTH_SECRET || "expense-tracker-secret-key-2026"
+  secret: process.env.NEXTAUTH_SECRET || "expense-tracker-secret-key-2026",
 }
